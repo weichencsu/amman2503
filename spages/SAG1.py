@@ -93,7 +93,7 @@ def plot_sensor_data(file_path):
         legend=dict(
             orientation="h",
             yanchor="bottom",
-            y=1.02,
+            y=0.1,
             xanchor="right",
             x=1
         )
