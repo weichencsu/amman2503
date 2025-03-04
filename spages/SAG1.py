@@ -2,125 +2,118 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-import numpy as np
+import os
+from io import BytesIO
 
-def PebbleRateChart(mt, pb_rate_transient, pb_rate_ma, pb_rate_linear):
-    # Add plot
+def process_sensor_data(file_path):
+ 
+    # 读取Excel文件中的所有Sheet
+    xls = pd.ExcelFile(file_path)
+    sheets_dict = pd.read_excel(xls, sheet_name=None)
+    
+    # 初始化结果列表
+    results = []
+    
+    # 遍历每个Sheet进行处理
+    for sheet_name, df in sheets_dict.items():
+        # 检查是否存在需要过滤的列
+        if '总长_DEC' in df.columns:
+            # 过滤掉总长_DEC等于12337的行
+            filtered_df = df[df['总长_DEC'] != 12337]
+        else:
+            # 如果列不存在，保留原数据（或根据需求处理）
+            filtered_df = df
+        
+        # 检查过滤后的DataFrame是否为空
+        if filtered_df.empty:
+            # 记录空数据的情况
+            results.append({
+                'sensorName': sheet_name,
+                'latestTime': None,
+                'totalLength': None,
+                'actualLength': None
+            })
+        else:
+            # 获取最后一行数据
+            last_row = filtered_df.iloc[-1]
+            # 提取所需字段，使用.get()避免KeyError
+            latest_time = last_row.get('time')
+            total_length = last_row.get('总长_DEC')
+            actual_length = last_row.get('实际长度_DEC')
+            
+            results.append({
+                'sensorName': sheet_name,
+                'latestTime': latest_time,
+                'totalLength': total_length,
+                'actualLength': actual_length
+            })
+    
+    # 转换结果列表为DataFrame
+    result_df = pd.DataFrame(results)
+    
+    return result_df
+
+
+def plot_sensor_data(file_path):
+    # 读取所有sheet
+    sheets = pd.read_excel(file_path, sheet_name=None)
+    
+    # 创建图形对象
     fig = go.Figure()
-    # 绘制散点图
-    fig.add_trace(go.Scatter(x = mt, y = pb_rate_transient, 
-                            name = 'Transient Pebble Rate', mode = 'lines', opacity = .1, 
-                            line = dict(color = 'black') 
-                            ))
-    # 绘制移动平均线
-    fig.add_trace(go.Scatter(x = mt, y = pb_rate_ma, 
-                             name = 'Moving Average Pebble Rate', mode = 'lines', 
-                             line = dict(color='royalblue', width = 2) 
-                             ))
-    # 绘制线性拟合曲线
-    fig.add_trace(
-        go.Scatter(x = mt, y = pb_rate_linear, 
-                   name = 'Linear Regression', mode = 'lines',  
-                   line = dict(color = 'black', width = 3) 
-                   ))
-    fig.update_yaxes(title_text = "Pebble Rate (t/h)")
-    fig.update_xaxes(title_text = "Cumulative MT Milled")
-
+    
+    # 处理每个sheet
+    for sheet_name, df in sheets.items():
+        # 过滤数据
+        filtered_df = df[df['总长_DEC'] != 12337]
+        
+        # 转换时间格式
+        filtered_df['time'] = pd.to_datetime(filtered_df['time'])
+        
+        # 添加轨迹到图形
+        fig.add_trace(go.Scatter(
+            x=filtered_df['time'],
+            y=filtered_df['实际长度_DEC'],
+            mode='lines+markers',
+            name=sheet_name
+        ))
+        
     # Update axis format
-    fig.update_yaxes(range = [100, 650])
+    fig.update_yaxes(title_text="Sensor Length - mm")
+    fig.update_xaxes(title_text="Date and Time")
+    fig.update_yaxes(range=[0, 450])
 
     # Update figure format
     fig.update_layout(
-        margin = dict(l = 1, r = 1, t = 50, b = 50),
-        template="simple_white"
+        margin=dict(l=1, r=1, t=30, b=1),
+        template="seaborn"
     )
-
+    
+    # 设置布局
     fig.update_layout(
-        showlegend = True,
-        font = dict(
-            size = 12,
-            color = "Black"
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
         )
     )
-
-    fig.update_layout(legend = dict(
-            yanchor = "top",
-            y = 0.99,
-            xanchor = "left",
-            x = 0.03
-        )
-    )
-
+    
     return fig
-
-
-def read_xlsx(path):
-    df = pd.read_excel(path, header = None)
-    df = df.fillna('')
-    df.index = ['' for _ in range(len(df))]  # 动态设置索引长度
-    return df
-
-
-def GrateWearChart(mt, outer_grate, outer_pebble, mid_grate):
-    # Add plot
-    fig = go.Figure()
-    # 绘制散点图
-    fig.add_trace(go.Scatter(x = mt, y = outer_grate, 
-                            name = '22mm Outer Grate:  OA = 23,082 MT + 147,474 [mm²]', mode = 'lines', 
-                            line = dict(color = 'orange', width = 3) 
-                            ))
-    # 绘制移动平均线
-    fig.add_trace(go.Scatter(x = mt, y = outer_pebble, 
-                             name = '65mm Outer Grate:  OA = 17,376 MT + 187,877 [mm²]', mode = 'lines', 
-                             line = dict(color='royalblue', width = 3) 
-                             ))
-    # 绘制线性拟合曲线
-    fig.add_trace(
-        go.Scatter(x = mt, y = mid_grate, 
-                   name = '22mm Mid Grate:  OA = 14,679 MT + 128,530 [mm²]', mode = 'lines',  
-                   line = dict(color = 'gray', width = 3) 
-                   ))
-    fig.update_yaxes(title_text = "Open Area - mm²")
-    fig.update_xaxes(title_text = "Cumulative MT Milled")
-
-    # Update axis format
-    #fig.update_yaxes(range = [100, 650])
-
-    # Update figure format
-    fig.update_layout(
-        margin = dict(l = 1, r = 1, t = 50, b = 50),
-        template="simple_white"
-    )
-
-    fig.update_layout(
-        showlegend = True,
-        font = dict(
-            size = 12,
-            color = "Black"
-        )
-    )
-
-    fig.update_layout(legend = dict(
-            yanchor = "top",
-            y = 0.99,
-            xanchor = "left",
-            x = 0.03
-        )
-    )
-
-    return fig
-
 
 
 def app():
-    ### User Input ###
-    sensor1code = "Row2-FE-Lifter"
-    sensor2code = "Row3-Mid-Lifter"
-    sensor3code = "Row4-FE-Lifter"
-    sensor4code = "Row5-Mid-Lifter"
-    ### End of User Input ###
-    
-    
+    ######################## User Input #######################
+    ### 读取设备名称的传感器数据库结果，并传递至Streamlit 前端进行显示
+    databasedPath = 'SAG1_sensor_data_with_decimal_filtered_updated.xlsx'
+
+    sensorResults = process_sensor_data(databasedPath)
+    ##  "sensorName  latestTime  totalLength  actualLength" ###
+    ######################## End of User Input ################
+
+
+
+
     ###################      Start of App     ###############################
     st.subheader("SAG Mill #1 Wear Sensor Installation", divider = 'rainbow')
     # st.subheader("", divider='red')
@@ -132,101 +125,32 @@ def app():
 
     cl1, cl2 = st.columns([1, 1], gap="medium", vertical_alignment="center")
     with cl1:
-        st.image("sagMap.png", use_column_width =True)
+        st.image("sagMap.png", use_container_width = True)
     with cl2:
-        st.image("shell.png", use_column_width =True)
+        st.image("shell.png", use_container_width = True)
         st.markdown("The following sensors were installed: ")
-        st.success("✅ " + sensor1code)
-        st.success("✅ " + sensor2code)
-        st.success("✅ " + sensor3code)
-        st.success("✅ " + sensor4code)
+        for snm in sensorResults["sensorName"]:
+            st.success("✅ " + snm)
         
     st.markdown("###")
 
-    ############################## Section 2 ################################
+    ############################## Section 2 ################################n   
     st.markdown("2. Wear Sensor Live Status")
-    totalH = 400
-    cl11, cl12 = st.columns(2)
-    with cl11:
-        st.caption("Latest Reading at: " + " 11:35:20 02-12-2024")
-        sensor11 = 400
-        dff11 = sensor11-totalH
-        cl11.metric(label = sensor1code + " Sensor Reading", value = str(sensor11) + "mm", delta = dff11)
-        
-        st.caption("Latest Reading at: " + " 11:35:20 02-12-2024")
-        sensor12 = 400
-        dff12 = sensor12-totalH
-        cl11.metric(label = sensor2code + " Sensor Reading", value = str(sensor12) + "mm", delta = dff12)
-    with cl12:
-        st.caption("Latest Reading at: " + " 11:35:20 02-12-2024")
-        sensor21 = 400
-        dff21 = sensor21-totalH
-        cl12.metric(label = sensor3code + " Sensor Reading", value = str(sensor21) + "mm", delta = dff21)
-        
-        st.caption("Latest Reading at: " + " 11:35:20 02-12-2024")
-        sensor22 = 400
-        dff22 = sensor22-totalH
-        cl12.metric(label = sensor4code + " Sensor Reading", value = str(sensor22) + "mm", delta = dff22)
-
-
-################################## plot data ###############################################
+    with st.container():
+        for row in sensorResults.itertuples():
+            # 检查 totalLength 是否非空（非 NaN）
+            if pd.notna(row.totalLength):
+                st.caption("Latest Reading at: " + str(row.latestTime))
+                st.metric(label = ":material/Sensors: " +  row.sensorName + " Sensor Reading", value = str(row.actualLength) + "mm", delta = row.actualLength - row.totalLength, border=True)
+            else:
+                st.metric(label = ":material/Sensors: " +  row.sensorName + " Sensor Reading", value = "No Wear Data Received", border=True)
+            #st.markdown("###")
     st.markdown("###")
+################################## plot data ###############################################
     st.markdown("3. Wear Sensor Plots")
     
     # Specify the file path
-    file_path = 'sensorReading.xlsx'
-
-    # Specify the sheet name
-    sheet_name = 'Sheet1'
-
-    # Specify the column names as a list
-    column_names = ['DateTime', 'P6051', 'P6052']
-
-    # Import via Pandas
-    # Read the Excel sheet with specified range and column names
-    df = pd.read_excel(file_path, sheet_name=sheet_name, header=None,
-                    skiprows=1)
-
-    # Assign column names to DataFrame
-    df.columns = column_names
-
-    # covert date time format
-    df['DateTime'] = pd.to_datetime(df['DateTime'])
-
-    # Plot in plotly
-    # Add the second trace with the secondary y-axis
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=df['DateTime'], y=df['P6051'], name='P6051',  mode='lines+markers') )
-    fig.add_trace(go.Scatter(x=df['DateTime'], y=df['P6052'], name='P6052',  mode='lines+markers') )
-
-    # Update axis format
-    fig.update_yaxes(title_text="Sensor Thickness - mm")
-    fig.update_xaxes(title_text="Date and Time")
-    fig.update_yaxes(range=[0, 450])
-
-    # Update figure format
-    fig.update_layout(
-        margin=dict(l=1, r=1, t=30, b=1),
-        template="seaborn"
-    )
-
-    fig.update_layout(
-        showlegend=True,
-        font=dict(
-            family="Ubuntu, regular",
-            size=12,
-            color="Black"
-        )
-    )
-
-    fig.update_layout(legend=dict(
-            yanchor="top",
-            y=0.3,
-            xanchor="left",
-            x=0.03
-        )
-    )
-
+    fig = plot_sensor_data(databasedPath)
     st.plotly_chart(fig, use_container_width=True)
 
     ################################## 3D Model ###############################################
@@ -246,18 +170,62 @@ def app():
     #)
     ############################## Section Display Dataframe ################################
     st.markdown("###")
-    st.markdown("4. Wear Sensor Database")
-    file_path1 = 'sensorReading.xlsx'
-    # Specify the sheet name
-    sheet_name1 = 'Sheet1'
-    
-    df1 = pd.read_excel(file_path1, sheet_name=sheet_name1, header=None, skiprows= 1)
 
-    # Specify the column names as a list
-    column_names1 = ['Datetime', 'P6051 Reading', 'P6052 Reading']
+    # 定义新的列名
+    NEW_COLUMNS = [
+        "Datetime", 
+        "TotalLength(HEX)", 
+        "SensorID(HEX)", 
+        "CurrentLength(HEX)", 
+        "CheckCode(HEX)", 
+        "TotalLength(mm)", 
+        "SensorID", 
+        "CurrentLength(mm)", 
+        "CheckCode"
+    ]
 
-    # Assign column names to DataFrame
-    df1.columns = column_names1
+    try:
+        # 读取所有工作表（返回字典格式：{sheet_name: DataFrame}）
+        with pd.ExcelFile(databasedPath) as excel_file:
+            # 创建内存缓冲区
+            output = BytesIO()
+            
+            # 使用ExcelWriter将处理后的数据写入内存
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                # 遍历每个工作表
+                for sheet_name in excel_file.sheet_names:
+                    df = pd.read_excel(excel_file, sheet_name=sheet_name)
+                    
+                    # 检查列数是否匹配
+                    if len(df.columns) != len(NEW_COLUMNS):
+                        raise ValueError(f"工作表 '{sheet_name}' 列数不匹配："
+                                        f"需要 {len(NEW_COLUMNS)} 列，实际 {len(df.columns)} 列")
+                    
+                    # 重命名列
+                    df.columns = NEW_COLUMNS
+                    
+                    # 写入新的Excel文件
+                    df.to_excel(
+                        writer,
+                        sheet_name=sheet_name,
+                        index=False
+                    )
+            
+            # 创建下载按钮
+            st.download_button(
+                label=":material/Download:  Download Database",
+                data=output.getvalue(),
+                file_name='SAG1_sensor_data.xlsx',
+                mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                use_container_width = True
+            )
+            
+            st.success("Sensor database available. Please click button to download!!!")    
 
-    # Display Table
-    st.dataframe(df1, hide_index=True, use_container_width=True)
+
+
+    except FileNotFoundError:
+        st.error(f"文件未找到：{databasedPath}")
+        st.info("请确认文件路径和权限")
+    except Exception as e:
+        st.error(f"发生错误：{str(e)}")
