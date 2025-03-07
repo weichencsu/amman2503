@@ -105,7 +105,7 @@ def plot_sensor_data(file_path):
 def app():
     ######################## User Input #######################
     ### 读取设备名称的传感器数据库结果，并传递至Streamlit 前端进行显示
-    databasedPath = 'SAG1_sensor_data_with_decimal_filtered_updated.xlsx'
+    databasedPath = './sensorCSV/SAG1_sensor_data_with_decimal_filtered_updated.xlsx'
 
     sensorResults = process_sensor_data(databasedPath)
     ##  "sensorName  latestTime  totalLength  actualLength" ###
